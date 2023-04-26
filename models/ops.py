@@ -16,7 +16,8 @@ OPS = {
     'dil_conv_3x3': lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine), # 5x5
     'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine), # 9x9
     'conv_7x1_1x7': lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine),
-    'mbconv_3_3': lambda C, stride, affine: MBConv(C, C, 3, stride, 1, 3, affine)
+    'mb_conv_3x3': lambda C, stride, affine: MBConv(C, C, 3, stride, 1, 3, affine),
+    'fused_mb_conv_3x3': lambda C, stride, affine: FusedMBConv(C, C, 3, stride, 1, 3, affine)
     # 'fused_mb_conv_3x3': lambda C, stride, affine: FusedMBConv(C, C, 3, stride, 1, affine=affine)
 }
 
