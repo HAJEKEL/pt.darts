@@ -19,9 +19,9 @@ PRIMITIVES = [
     'sep_conv_5x5',
     'dil_conv_3x3',
     'dil_conv_5x5',
-    'ds_conv_3x3',
-    'mb_conv_3x3',
-    'fused_mb_conv_3x3',
+    # 'ds_conv_3x3',
+    # 'mb_conv_3x3',
+    # 'fused_mb_conv_3x3',
     'none'
 ]
 
