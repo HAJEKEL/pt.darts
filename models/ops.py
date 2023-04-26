@@ -4,18 +4,25 @@ import torch.nn as nn
 import genotypes as gt
 
 
+# OPS = {
+#     'none': lambda C, stride, affine: Zero(stride),
+#     'avg_pool_3x3': lambda C, stride, affine: PoolBN('avg', C, 3, stride, 1, affine=affine),
+#     'max_pool_3x3': lambda C, stride, affine: PoolBN('max', C, 3, stride, 1, affine=affine),
+#     'skip_connect': lambda C, stride, affine: \
+#         Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
+#     'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
+#     'sep_conv_5x5': lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
+#     'sep_conv_7x7': lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
+#     'dil_conv_3x3': lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine), # 5x5
+#     'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine), # 9x9
+#     'conv_7x1_1x7': lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine)
+# }
+
 OPS = {
     'none': lambda C, stride, affine: Zero(stride),
-    'avg_pool_3x3': lambda C, stride, affine: PoolBN('avg', C, 3, stride, 1, affine=affine),
-    'max_pool_3x3': lambda C, stride, affine: PoolBN('max', C, 3, stride, 1, affine=affine),
-    'skip_connect': lambda C, stride, affine: \
-        Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-    'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
-    'sep_conv_5x5': lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
-    'sep_conv_7x7': lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
-    'dil_conv_3x3': lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine), # 5x5
-    'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine), # 9x9
-    'conv_7x1_1x7': lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine)
+    'ds_conv_3x3': lambda C, stride, affine: DSConv(C, C, 3, stride, 1, affine=affine),
+    'mb_conv_3x3': lambda C, stride, affine: MBConv(C, C, 3, stride, 1, affine=affine),
+    'fused_mb_conv_3x3': lambda C, stride, affine: FusedMBConv(C, C, 3, stride, 1, affine=affine),
 }
 
 
@@ -28,6 +35,86 @@ def drop_path_(x, drop_prob, training):
 
     return x
 
+#mobilenet
+class DSConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, affine=True):
+        super().__init__()
+        self.depthwise_conv = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding, groups=in_channels, bias=False)
+        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels, affine=affine)
+
+    def forward(self, x):
+        out = self.depthwise_conv(x)
+        out = self.pointwise_conv(out)
+        out = self.bn(out)
+        return out
+#efficientnet v1
+class MBConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, affine=True, expansion=6):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.affine = affine
+        self.expansion = expansion
+        self.hidden_dim = int(round(in_channels * expansion))
+
+        self.conv1 = nn.Conv2d(in_channels, self.hidden_dim, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.hidden_dim, affine=affine)
+        self.conv2 = nn.Conv2d(self.hidden_dim, self.hidden_dim, kernel_size, stride, padding, groups=self.hidden_dim, bias=False)
+        self.bn2 = nn.BatchNorm2d(self.hidden_dim, affine=affine)
+        self.conv3 = nn.Conv2d(self.hidden_dim, out_channels, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels, affine=affine)
+
+        if stride == 1 and in_channels == out_channels:
+            self.shortcut = nn.Identity()
+        else:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=False),
+                nn.BatchNorm2d(out_channels, affine=affine)
+            )
+
+    def forward(self, x):
+        out = nn.ReLU()(self.bn1(self.conv1(x)))
+        out = nn.ReLU()(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out = out + self.shortcut(x) if self.stride == 1 else out
+        return out
+
+#efficientnet v2
+class FusedMBConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, affine=True, expansion=6):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.affine = affine
+        self.expansion = expansion
+        self.hidden_dim = int(round(in_channels * expansion))
+
+        self.conv1 = nn.Conv2d(in_channels, self.hidden_dim, kernel_size, stride, padding, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.hidden_dim, affine=affine)
+        self.conv2 = nn.Conv2d(self.hidden_dim, out_channels, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels, affine=affine)
+
+        if stride == 1 and in_channels == out_channels:
+            self.shortcut = nn.Identity()
+        else:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, padding=0, bias=False),
+                nn.BatchNorm2d(out_channels, affine=affine)
+            )
+
+    def forward(self, x):
+        out = nn.ReLU()(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = out + self.shortcut(x) if self.stride == 1 else out
+        return out
+    
 
 class DropPath_(nn.Module):
     def __init__(self, p=0.):
