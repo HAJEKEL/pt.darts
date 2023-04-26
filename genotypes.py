@@ -20,7 +20,7 @@ PRIMITIVES = [
     'dil_conv_3x3',
     'dil_conv_5x5',
     'mbconv_3_3',
-    # 'fused_mb_conv_3x3',
+    'fused_mb_conv_3x3',
     'none'
 ]
 
