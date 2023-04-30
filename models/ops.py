@@ -3,7 +3,8 @@ import torch
 import torch.nn as nn
 import genotypes as gt
 
-
+#Here I defined a dictonary with the operations out of which DARTS can choose.
+#Their definition follows later in this file. 
 OPS = {
     'none': lambda C, stride, affine: Zero(stride),
     'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
@@ -11,13 +12,20 @@ OPS = {
     'fused_mb_conv_3x3': lambda C, stride, affine: FusedMBConv(C, C, 3, stride, 1, 3, affine)
 }
 
+#Original OPS from khanrc/pt.darts:
 # OPS = {
 #     'none': lambda C, stride, affine: Zero(stride),
-#     'ds_conv_3x3': lambda C, stride, affine: DSConv(C, C, 3, stride, 1, affine=affine),
-#     'mb_conv_3x3': lambda C, stride, affine: MBConv(C, C, 3, stride, 1, affine=affine),
-#     'fused_mb_conv_3x3': lambda C, stride, affine: FusedMBConv(C, C, 3, stride, 1, affine=affine),
+#     'avg_pool_3x3': lambda C, stride, affine: PoolBN('avg', C, 3, stride, 1, affine=affine),
+#     'max_pool_3x3': lambda C, stride, affine: PoolBN('max', C, 3, stride, 1, affine=affine),
+#     'skip_connect': lambda C, stride, affine: \
+#         Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
+#     'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
+#     'sep_conv_5x5': lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
+#     'sep_conv_7x7': lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
+#     'dil_conv_3x3': lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine), # 5x5
+#     'dil_conv_5x5': lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine), # 9x9
+#     'conv_7x1_1x7': lambda C, stride, affine: FacConv(C, C, 7, stride, 3, affine=affine)
 # }
-
 
 def drop_path_(x, drop_prob, training):
     if training and drop_prob > 0.:
@@ -29,6 +37,7 @@ def drop_path_(x, drop_prob, training):
     return x
 
 #efficientnet v1 https://github.com/kairos03/ProxylessNAS-Pytorch
+#Here I define the MBConv block 
 def depthwise_conv(in_channels, kernel_size, stride, groups, affine):
     padding = kernel_size // 2
     return ConvBNReLU(in_channels, in_channels, kernel_size, stride, padding, groups, affine)
@@ -40,10 +49,7 @@ class ConvBNReLU(nn.Module):
     self.conv = nn.Conv2d(C_in, C_out, kernel_size, stride, padding, groups=groups, bias=False)
     self.bn = nn.BatchNorm2d(C_out, affine=affine)
     if activation:
-      self.act = nn.ReLU6()
-    
-  def forward(self, x):
-    x = self.conv(x)
+      self.act = nn.ReLU6()SepConv
     x = self.bn(x)
     if hasattr(self, 'act'):
       x = self.act(x)
@@ -69,6 +75,7 @@ class MBConv(nn.Module):
       return self.op(x)
 
 #efficientnet v2
+#Here I define the fusedMBConv block
 class FusedMBConv(nn.Module):
   def __init__(self, C_in, C_out, kernel_size, stride, padding, expansion_factor, affine=True):
     super(FusedMBConv, self).__init__()
@@ -186,7 +193,8 @@ class DilConv(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
+#MobileNetv1
+#Here I define the depthwise seperable convolution:
 class SepConv(nn.Module):
     """ Depthwise separable conv
     DilConv(dilation=1) * 2

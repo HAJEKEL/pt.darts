@@ -18,6 +18,18 @@ PRIMITIVES = [
     'none'
 ]
 
+#Original PRIMITIVES from khanrc/pt.darts:
+# PRIMITIVES = [
+#     'max_pool_3x3',
+#     'avg_pool_3x3',
+#     'skip_connect', # identity
+#     'sep_conv_3x3',
+#     'sep_conv_5x5',
+#     'dil_conv_3x3',
+#     'dil_conv_5x5',
+#     'none'
+# ]
+
 def to_dag(C_in, gene, reduction):
     """ generate discrete ops from gene """
     dag = nn.ModuleList()
